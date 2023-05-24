@@ -1,4 +1,7 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("tkagg")
 
 """
 Problem
@@ -10,51 +13,112 @@ Problem
 
 
 class Neuron:
-    def __init__(self, input=0):
-        self.input = input
-        self.voltage_membrane = 0
+    def __init__(self, n_type="sigmoid",
+                 threshold=-65, reset=-, resting=-75, tau=10e-3):
+        # self.input = input
         self.activation = 0
-        self.voltage_threshold = 10
+        self.voltage_membrane = resting
+        self.voltage_reset = reset
+        self.voltage_threshold = threshold
+        self.n_type = n_type
+        self.tau = tau
 
     def sigmoid(self, input):
         output = np.exp(input)/(1.0 + np.exp(input))
-        return output
+        self.activation = output
+        return self.activation
 
-    def integrate_fire(self,input):
+    def integrate_fire(self, input, time_step=1e-3):
         """
         this type of neuron accumulates the inputs and 
         stores in membrane potential.
         the neuron fires if it is over the threshold Vth
         """
-        self.input = input
-        self.voltage_membrane = 
-        if self.voltage_membrane > self.voltage_threshold:
-            output = "make a spike"  # TODO
+        # the given input here should be already be the total input (spikes) multiplied by the weights
+        beta = np.exp(-time_step/self.tau)  # the leak term
+        self.voltage_membrane = (beta*self.voltage_membrane) + input
+        if self.voltage_membrane >= self.voltage_threshold:
+            output = 1
             self.activation = output
+            self.voltage_membrane = self.voltage_reset
+            return self.activation
+        else:
+            self.activation = 0
             return self.activation
 
-    def output(self):
-        self.voltage_membrane = self.input
-        self.activation = self.sigmoid(self.voltage_membrane)
-        return self.activation
+    def output(self, input, time_step=1e-3):
+        if self.n_type == "sigmoid":
+            self.sigmoid(input)
+            return self.activation
+        if self.n_type == "lif":
+            self.integrate_fire(input, time_step=time_step)
+            return self.activation
 
 
-# neuron1 = Neuron(1)
-# neuron1.output()
-# neuron1.input = 2
-# neuron1.output()
+# test the sigmoid neuron
+neuron0 = Neuron(n_type="sigmoid")
+neuron0.output(0)
+neuron0.output(2)
+
+# test the lif inspired neuron
+time_step = 1e-2
+n_steps = 1000
+
+time_vector = np.arange(-10, 10, time_step)
+len(time_vector)
+input_vector = 5 + np.sin(time_vector*0.5)
+# input_vector = np.heaviside(time_vector,1)
+
+
+def stepfn(start, stop, amplitude):
+    input_vector = np.zeros_like(time_vector)
+    for i, t in enumerate(time_vector):
+        if start < t < stop:
+            input_vector[i] = amplitude
+    return input_vector
+
+# input_vector = stepfn(-5,5,100)
+
+
+neuron1 = Neuron(n_type="lif")
+activity = np.array([])
+spikes = np.array([])
+for i in input_vector:
+    output = neuron1.output(i, time_step=time_step)
+    spikes = np.append(spikes, output)
+    activity = np.append(activity, neuron1.voltage_membrane)
+
+np.unique(spikes)
+spike_index = []
+for i, a in enumerate(spikes):
+    if a == 1:
+        spike_index.append(i)
+spike_index
+print(activity)
+input_vector
+
+plt.figure()
+plt.plot(time_vector, np.c_[activity, spikes, input_vector],
+         label=['membrane vol', 'spikes', 'input'])
+plt.legend()
+plt.show()
+
+# now I need to rewirte the layer code to simulate the neurons for a number of time steps
+# should I do this in the network instead?
 
 
 class Layer(Neuron):
-    def __init__(self, n_neurons, input=None):
+    def __init__(self, n_neurons, n_type="sigmoid", input=None):
         self.n_neurons = n_neurons
+        self.n_type = n_type
         self.layer = []
         self.generate_layer()
 
     def generate_layer(self):
         self.layer = []
         for i in range(self.n_neurons):
-            self.layer.append(Neuron(0))
+            # self.layer.append(Neuron())
+            self.layer.append(Neuron(n_type="lif"))
         return self.layer
 
     def input(self, neuron_input):
@@ -65,18 +129,19 @@ class Layer(Neuron):
             neuron.input = neuron_input[i]
             self.inputs.append(neuron.input)
 
-    def activate(self):
+    def activate(self, input):
+        assert len(
+            input) == self.n_neurons, "input vector should be the same as the number of neurons"
         self.activations = []
-        for neuron in self.layer:
-            self.activations.append(neuron.output())
+        for i, neuron in enumerate(self.layer):
+            self.activations.append(neuron.output(input[i]))
 
 
 layer1 = Layer(n_neurons=2)
 layer1.layer
 layer1.n_neurons
 layer1.generate_layer()
-layer1.input([1, 2])
-layer1.activate()
+layer1.activate([20,2])
 layer1.activations
 
 
@@ -134,6 +199,6 @@ class Network(Layer):
 
 network = Network(2, 2)
 network.summary()
-network.forward_pass([1,0])
+network.forward_pass([1, 0])
 network.layers[-1].activations
 network.layers[0].activations
